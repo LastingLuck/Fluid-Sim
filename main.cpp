@@ -4,18 +4,27 @@
 #include <fstream>
 #include <iostream>
 #include <time.h>
+#include <vector>
 
-#include "Particle.h"
+#include <GL/glew.h>   //Include order can matter here
+#include <SDL2/SDL.h>
+#include <SDL2/SDL_opengl.h>
 
-#define BSIZE 100
+#define GLM_FORCE_RADIANS
+#include "glm/glm.hpp"
+#include "glm/gtx/rotate_vector.hpp"
+#include "glm/gtc/matrix_transform.hpp"
+#include "glm/gtc/type_ptr.hpp"
+#include "glm/gtx/string_cast.hpp"
+
+#define BSIZE 2
 
 float lastTime = 0;
 float curTime = 0;
 float difTime = 0;
-int vNum = 0;
 
-float camx = -5.0f, camy = 0.0f, camz = 0.0f;
-float dirx = 1.0f, diry = 0.0f, dirz = 0.0f;
+float camx = -2.0f, camy = 2.0f, camz = 2.0f;
+float dirx = 1.0f, diry = -1.0f, dirz = 0.0f;
 float rdirx = 0.0, rdiry = 0.0f, rdirz = 1.0f;
 int windowWidth = 800, windowHeight = 600;
 float mSense = 60.0f;
@@ -23,7 +32,7 @@ int pointSize = 3;
 std::vector<glm::mat4> modelPos;
 
 bool DEBUG_ON = true;
-GLuint InitShader(const char* gShaderFileName, const char* vShaderFileName, const char* fShaderFileName);
+GLuint InitShader(const char* vShaderFileName, const char* fShaderFileName);
 bool fullscreen = false;
 void Win2PPM(int width, int height);
 
@@ -64,7 +73,6 @@ int main(int argc, char** argv) {
 	}
 	printf("%d\n",numLines);
 	int numVerts1 = numLines/8;
-    vNum = numVerts1;
 	modelFile.close();
     
     float vel[BSIZE][BSIZE];
@@ -72,7 +80,8 @@ int main(int argc, char** argv) {
     for(int i = 0; i < BSIZE; i++) {
         for(int j = 0; j < BSIZE; j++) {
             vel[i][j] = 0.0f;
-            pos[i][j] = 0.0f;
+            pos[i][j] = (i == 0 && j == 0) ? 3.0f : (i == 0 || j == 0) ? 2.0f : 1.0f;
+            //pos[i][j] = 1.0f;
         }
     }
     
@@ -81,7 +90,7 @@ int main(int argc, char** argv) {
 	glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); //Set the vbo as the active array buffer (Only one buffer can be active at a time)
 	glBufferData(GL_ARRAY_BUFFER, numLines*sizeof(float), model1, GL_STATIC_DRAW); //upload vertices to vbo
     
-    int shaderProgram = InitShader("geometry.glsl", "vertex.glsl", "fragment.glsl");
+    int shaderProgram = InitShader("vertex.glsl", "fragment.glsl");
 	glUseProgram(shaderProgram); //Set the active shader (only one can be used at a time)
     printf("Shader Compiled\n");
     
@@ -97,13 +106,14 @@ int main(int argc, char** argv) {
 	glEnableVertexAttribArray(normAttrib);
     
     //Enable height texture
+    /*
     GLuint tex;
     glGenTextures(1, &tex);
     glActiveTexture(GL_TEXTURE0);
-    glBindTexture(GL_TEXTURE_1D, tex0);
-    glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-    glTexParameteri(GL_TEXTURE_1D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-    
+    glBindTexture(GL_TEXTURE_2D, tex0);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+    */
     glEnable(GL_DEPTH_TEST);
     SDL_Event windowEvent;
     
@@ -117,6 +127,12 @@ int main(int argc, char** argv) {
     //Map of keys to states, with 0 and 1 being left and right mouse button
     std::map<char, bool> kmap;
     bool quit = false;
+    bool pause = true;
+    //float* depthTex = new float[BSIZE*BSIZE];
+    GLint uniProj = glGetUniformLocation(shaderProgram, "proj");
+    GLint uniView = glGetUniformLocation(shaderProgram, "view");
+    GLint uniColor = glGetUniformLocation(shaderProgram, "inColor");
+    GLint uniModel = glGetUniformLocation(shaderProgram, "model");
     while(true) {
         while(SDL_PollEvent(&windowEvent)) {
             if (windowEvent.type == SDL_QUIT) {
@@ -217,21 +233,12 @@ int main(int argc, char** argv) {
                 camy = newpos.y;
                 camz = newpos.z;
             }
+            else if(windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_p) {
+                pause = !pause;
+            }
         }
         if(quit) {
             break;
-        }
-        
-        for(int i = 0; i < BSIZE; i++) {
-            int xm = (i-1 < 0) ? 0 : i-1;
-            int xp = (i+1 = BSIZE) ? BSIZE-1 : i+1;
-            for(int j = 0; j < BSIZE; j++) {
-                int ym = (j-1 < 0) ? 0 : j-1;
-                int yp = (j+1 = BSIZE) ? BSIZE-1 : j+1;
-                vel[i][j] += (pos[xm][j] + pos[xp][j] + pos[i][ym] + pos[i][yp]) / 4.0f - pos[i][j];
-                vel[i][j] *= 0.99f;
-                pos[i][j] += vel[i][j];
-            }
         }
         
         // Clear the screen to default color
@@ -242,13 +249,40 @@ int main(int argc, char** argv) {
             glm::vec3(camx, camy, camz),  //Cam Position
             glm::vec3(camx+dirx, camy+diry, camz+dirz),  //Look at point
             glm::vec3(0.0f, 1.0f, 0.0f)); //Up
-        GLint uniView = glGetUniformLocation(shaderProgram, "view");
+        
         glUniformMatrix4fv(uniView, 1, GL_FALSE, glm::value_ptr(view));
-      
         glm::mat4 proj = glm::perspective(3.14f/2, 800.0f / 600.0f, 0.1f, 25.0f); //FOV, aspect, near, far
-        GLint uniProj = glGetUniformLocation(shaderProgram, "proj");
         glUniformMatrix4fv(uniProj, 1, GL_FALSE, glm::value_ptr(proj));
         
+        for(int i = 0; i < BSIZE; i++) {
+            int xm = (i-1 < 0) ? 0 : i-1;
+            int xp = (i+1 == BSIZE) ? BSIZE-1 : i+1;
+            for(int j = 0; j < BSIZE; j++) {
+                int ym = (j-1 < 0) ? 0 : j-1;
+                int yp = (j+1 == BSIZE) ? BSIZE-1 : j+1;
+                if(!pause) {
+                    vel[i][j] += (pos[xm][j] + pos[xp][j] + pos[i][ym] + pos[i][yp]) / 4.0f - pos[i][j];
+                    vel[i][j] *= 0.99f;
+                    pos[i][j] += vel[i][j];
+                }
+                //depthTex[j+BSIZE*i] = pos[i][j];
+                model = glm::mat4();
+                //model = glm::translate(model, glm::vec3(i*0.1f, pos[i][j]/2.0f, j*0.1f));
+                model = glm::translate(model, glm::vec3(i, pos[i][j]/2.0f, j));
+                //model = glm::scale(model, glm::vec3(0.1f, pos[i][j]/2.0f+0.5f, 0.1f));
+                model = glm::scale(model, glm::vec3(1.0f, pos[i][j]/2.0f+0.5f, 1.0f));
+                glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
+                glUniform3f(uniColor, 0.0f, 0.1f, 0.8f);
+                glDrawArrays(GL_TRIANGLES, 0, numVerts1);
+                printf("Model: (%f %f %f) Scale: (%f %f %f)\n", i*0.1f, pos[i][j]/2.0f, j*0.1f, 0.1f, pos[i][j]/2.0f+0.5f, 0.1f);
+            }
+        }
+        printf("\n");
+        /*
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, BSIZE, BSIZE, 0, GL_ALPHA, GL_FLOAT, depthTex);
+        glGenerateMipmap(GL_TEXTURE_2D);
+        glUniform1i(glGetUniformLocation(shaderProgram, "tex"), 0);
+        */
         
         lastTime = curTime;
         curTime = SDL_GetTicks()/1000.f;
@@ -257,7 +291,7 @@ int main(int argc, char** argv) {
         numFrames++;
         fpsTime += difTime;
         if(fpsTime > 1.0f) {
-            SDL_SetWindowTitle(window, "FPS: " + std::to_string(numFrames/fpsTime));
+            SDL_SetWindowTitle(window, ("FPS: " + std::to_string(numFrames/fpsTime)).c_str());
             fpsTime -= 1.0f;
             numFrames = 0;
         }
@@ -313,10 +347,10 @@ static char* readShaderSource(const char* shaderFile)
 }
 
 // Create a GLSL program object from vertex and fragment shader files
-GLuint InitShader(const char* gShaderFileName, const char* vShaderFileName, const char* fShaderFileName)
+GLuint InitShader(const char* vShaderFileName, const char* fShaderFileName)
 {
-	GLuint geometry_shader, vertex_shader, fragment_shader;
-	GLchar *gs_text, *vs_text, *fs_text;
+	GLuint vertex_shader, fragment_shader;
+	GLchar *vs_text, *fs_text;
 	GLuint program;
 
 	// check GLSL version
@@ -324,12 +358,10 @@ GLuint InitShader(const char* gShaderFileName, const char* vShaderFileName, cons
 
 	// Create shader handlers
 	vertex_shader = glCreateShader(GL_VERTEX_SHADER);
-    geometry_shader = glCreateShader(GL_GEOMETRY_SHADER);
 	fragment_shader = glCreateShader(GL_FRAGMENT_SHADER);
 
 	// Read source code from shader files
 	vs_text = readShaderSource(vShaderFileName);
-    gs_text = readShaderSource(gShaderFileName);
 	fs_text = readShaderSource(fShaderFileName);
 
 	// error check
@@ -341,15 +373,6 @@ GLuint InitShader(const char* gShaderFileName, const char* vShaderFileName, cons
 		printf("%s\n", vs_text);
 		printf("=====================\n\n");
 	}
-    if(gs_text == NULL) {
-        printf("Failed to read from geometry shader file %s\n", gShaderFileName);
-		exit(1);
-    }
-    else if(DEBUG_ON) {
-        printf("Geometry Shader:\n=====================\n");
-		printf("%s\n", gs_text);
-		printf("=====================\n\n");
-    }
 	if (fs_text == NULL) {
 		printf("Failed to read from fragent shader file %s\n", fShaderFileName);
 		exit(1);
@@ -374,27 +397,6 @@ GLuint InitShader(const char* gShaderFileName, const char* vShaderFileName, cons
 			printf("printing error message of %d bytes\n", logMaxSize);
 			char* logMsg = new char[logMaxSize];
 			glGetShaderInfoLog(vertex_shader, logMaxSize, &logLength, logMsg);
-			printf("%d bytes retrieved\n", logLength);
-			printf("error message: %s\n", logMsg);
-			delete[] logMsg;
-		}
-		exit(1);
-	}
-    
-    // Load Geometry Shader
-    const char *gg = gs_text;
-	glShaderSource(geometry_shader, 1, &gg, NULL);  //Read source
-	glCompileShader(geometry_shader); // Compile shaders
-    //Check for errors
-	glGetShaderiv(geometry_shader, GL_COMPILE_STATUS, &compiled);
-	if (!compiled) {
-		printf("Geometry shader failed to compile:\n");
-		if (DEBUG_ON) {
-			GLint logMaxSize, logLength;
-			glGetShaderiv(geometry_shader, GL_INFO_LOG_LENGTH, &logMaxSize);
-			printf("printing error message of %d bytes\n", logMaxSize);
-			char* logMsg = new char[logMaxSize];
-			glGetShaderInfoLog(geometry_shader, logMaxSize, &logLength, logMsg);
 			printf("%d bytes retrieved\n", logLength);
 			printf("error message: %s\n", logMsg);
 			delete[] logMsg;
@@ -429,7 +431,6 @@ GLuint InitShader(const char* gShaderFileName, const char* vShaderFileName, cons
 
 	// Attach shaders to program
 	glAttachShader(program, vertex_shader);
-    glAttachShader(program, geometry_shader);
 	glAttachShader(program, fragment_shader);
 
 	// Link and set program to use
