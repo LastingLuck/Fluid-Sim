@@ -17,7 +17,7 @@
 #include "glm/gtc/type_ptr.hpp"
 #include "glm/gtx/string_cast.hpp"
 
-#define BSIZE 2
+#define BSIZE 4
 
 float lastTime = 0;
 float curTime = 0;
@@ -75,16 +75,6 @@ int main(int argc, char** argv) {
 	int numVerts1 = numLines/8;
 	modelFile.close();
     
-    float vel[BSIZE][BSIZE];
-    float pos[BSIZE][BSIZE];
-    for(int i = 0; i < BSIZE; i++) {
-        for(int j = 0; j < BSIZE; j++) {
-            vel[i][j] = 0.0f;
-            pos[i][j] = (i == 0 && j == 0) ? 3.0f : (i == 0 || j == 0) ? 2.0f : 1.0f;
-            //pos[i][j] = 1.0f;
-        }
-    }
-    
     GLuint vbo[1];
 	glGenBuffers(1, vbo);  //Create 1 buffer called vbo
 	glBindBuffer(GL_ARRAY_BUFFER, vbo[0]); //Set the vbo as the active array buffer (Only one buffer can be active at a time)
@@ -120,6 +110,20 @@ int main(int argc, char** argv) {
     SDL_SetWindowTitle(window, "FPS: 60");
     int numFrames = 0;
     
+    float vel[BSIZE][BSIZE];
+    float pos[BSIZE][BSIZE];
+    for(int i = 0; i < BSIZE; i++) {
+        for(int j = 0; j < BSIZE; j++) {
+            vel[i][j] = 0.0f;
+            //pos[i][j] = (i == 0 && j == 0) ? 3.0f : (i == 0 || j == 0) ? 2.0f : 1.0f;
+            pos[i][j] = 1.0f;
+            printf("(%f %f) ", pos[i][j], vel[i][j]);
+        }
+        printf("\n");
+    }
+    printf("\n");
+    pos[1][1] = 2.0f;
+    
     lastTime = SDL_GetTicks()/1000.f;
     curTime = lastTime;
     difTime = 0;
@@ -128,6 +132,7 @@ int main(int argc, char** argv) {
     std::map<char, bool> kmap;
     bool quit = false;
     bool pause = true;
+    bool nextFrame = false;
     //float* depthTex = new float[BSIZE*BSIZE];
     GLint uniProj = glGetUniformLocation(shaderProgram, "proj");
     GLint uniView = glGetUniformLocation(shaderProgram, "view");
@@ -236,6 +241,9 @@ int main(int argc, char** argv) {
             else if(windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_p) {
                 pause = !pause;
             }
+            else if(windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_n) {
+                nextFrame = true;
+            }
         }
         if(quit) {
             break;
@@ -265,19 +273,30 @@ int main(int argc, char** argv) {
                     vel[i][j] *= 0.99f;
                     pos[i][j] += vel[i][j];
                 }
+                if(pause && nextFrame) {
+                    vel[i][j] += (pos[xm][j] + pos[xp][j] + pos[i][ym] + pos[i][yp]) / 4.0f - pos[i][j];
+                    vel[i][j] *= 0.99f;
+                    pos[i][j] += vel[i][j];
+                    printf("(%f %f) ", pos[i][j], vel[i][j]);
+                }
                 //depthTex[j+BSIZE*i] = pos[i][j];
                 model = glm::mat4();
-                //model = glm::translate(model, glm::vec3(i*0.1f, pos[i][j]/2.0f, j*0.1f));
-                model = glm::translate(model, glm::vec3(i, pos[i][j]/2.0f, j));
-                //model = glm::scale(model, glm::vec3(0.1f, pos[i][j]/2.0f+0.5f, 0.1f));
-                model = glm::scale(model, glm::vec3(1.0f, pos[i][j]/2.0f+0.5f, 1.0f));
+                
+                model = glm::scale(model, glm::vec3(1.0f, pos[i][j]*0.5f+0.5f, 1.0f));
+                model = glm::translate(model, glm::vec3(i, 0.5f, j));
+                
                 glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
                 glUniform3f(uniColor, 0.0f, 0.1f, 0.8f);
                 glDrawArrays(GL_TRIANGLES, 0, numVerts1);
-                printf("Model: (%f %f %f) Scale: (%f %f %f)\n", i*0.1f, pos[i][j]/2.0f, j*0.1f, 0.1f, pos[i][j]/2.0f+0.5f, 0.1f);
+            }
+            if(nextFrame) {
+                printf("\n");
             }
         }
-        printf("\n");
+        if(nextFrame) {
+            printf("\n");
+            nextFrame = false;
+        }
         /*
         glTexImage2D(GL_TEXTURE_2D, 0, GL_ALPHA, BSIZE, BSIZE, 0, GL_ALPHA, GL_FLOAT, depthTex);
         glGenerateMipmap(GL_TEXTURE_2D);
