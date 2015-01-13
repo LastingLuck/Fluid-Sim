@@ -270,12 +270,12 @@ int main(int argc, char** argv) {
                 int yp = (j+1 == BSIZE) ? BSIZE-1 : j+1;
                 if(!pause) {
                     vel[i][j] += (pos[xm][j] + pos[xp][j] + pos[i][ym] + pos[i][yp]) / 4.0f - pos[i][j];
-                    vel[i][j] *= 0.99f;
+                    vel[i][j] *= 0.99f * difTime;
                     pos[i][j] += vel[i][j];
                 }
                 if(pause && nextFrame) {
                     vel[i][j] += (pos[xm][j] + pos[xp][j] + pos[i][ym] + pos[i][yp]) / 4.0f - pos[i][j];
-                    vel[i][j] *= 0.99f;
+                    vel[i][j] *= 0.99f * difTime;
                     pos[i][j] += vel[i][j];
                     printf("(%f %f) ", pos[i][j], vel[i][j]);
                 }
