@@ -17,7 +17,10 @@
 #include "glm/gtc/type_ptr.hpp"
 #include "glm/gtx/string_cast.hpp"
 
-#define BSIZE 4
+#define BSIZE 6
+float scaleSize = 0.4f;
+float vel[BSIZE][BSIZE];
+float pos[BSIZE][BSIZE];
 
 float lastTime = 0;
 float curTime = 0;
@@ -28,10 +31,10 @@ float dirx = 1.0f, diry = -1.0f, dirz = 0.0f;
 float rdirx = 0.0, rdiry = 0.0f, rdirz = 1.0f;
 int windowWidth = 800, windowHeight = 600;
 float mSense = 60.0f;
-int pointSize = 3;
 std::vector<glm::mat4> modelPos;
 
 bool DEBUG_ON = true;
+void initField();
 GLuint InitShader(const char* vShaderFileName, const char* fShaderFileName);
 bool fullscreen = false;
 void Win2PPM(int width, int height);
@@ -110,19 +113,7 @@ int main(int argc, char** argv) {
     SDL_SetWindowTitle(window, "FPS: 60");
     int numFrames = 0;
     
-    float vel[BSIZE][BSIZE];
-    float pos[BSIZE][BSIZE];
-    for(int i = 0; i < BSIZE; i++) {
-        for(int j = 0; j < BSIZE; j++) {
-            vel[i][j] = 0.0f;
-            //pos[i][j] = (i == 0 && j == 0) ? 3.0f : (i == 0 || j == 0) ? 2.0f : 1.0f;
-            pos[i][j] = 1.0f;
-            printf("(%f %f) ", pos[i][j], vel[i][j]);
-        }
-        printf("\n");
-    }
-    printf("\n");
-    pos[1][1] = 2.0f;
+    initField();
     
     lastTime = SDL_GetTicks()/1000.f;
     curTime = lastTime;
@@ -244,6 +235,10 @@ int main(int argc, char** argv) {
             else if(windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_n) {
                 nextFrame = true;
             }
+            else if(windowEvent.type == SDL_KEYUP && windowEvent.key.keysym.sym == SDLK_r) {
+                pause = true;
+                initField();
+            }
         }
         if(quit) {
             break;
@@ -269,21 +264,20 @@ int main(int argc, char** argv) {
                 int ym = (j-1 < 0) ? 0 : j-1;
                 int yp = (j+1 == BSIZE) ? BSIZE-1 : j+1;
                 if(!pause) {
-                    vel[i][j] += (pos[xm][j] + pos[xp][j] + pos[i][ym] + pos[i][yp]) / 4.0f - pos[i][j];
-                    vel[i][j] *= 0.99f * difTime;
+                    vel[i][j] += ((pos[xm][j] + pos[xp][j] + pos[i][ym] + pos[i][yp]) / 4.0f - pos[i][j]) * difTime;
+                    vel[i][j] *= 0.99f;
                     pos[i][j] += vel[i][j];
                 }
                 if(pause && nextFrame) {
-                    vel[i][j] += (pos[xm][j] + pos[xp][j] + pos[i][ym] + pos[i][yp]) / 4.0f - pos[i][j];
-                    vel[i][j] *= 0.99f * difTime;
+                    vel[i][j] += ((pos[xm][j] + pos[xp][j] + pos[i][ym] + pos[i][yp]) / 4.0f - pos[i][j]) * difTime;
+                    vel[i][j] *= 0.99f;
                     pos[i][j] += vel[i][j];
                     printf("(%f %f) ", pos[i][j], vel[i][j]);
                 }
                 //depthTex[j+BSIZE*i] = pos[i][j];
                 model = glm::mat4();
-                
-                model = glm::scale(model, glm::vec3(1.0f, pos[i][j]*0.5f+0.5f, 1.0f));
-                model = glm::translate(model, glm::vec3(i, 0.5f, j));
+                model = glm::scale(model, glm::vec3(scaleSize, pos[i][j]*0.5f+0.5f, scaleSize));
+                model = glm::translate(model, glm::vec3(i*scaleSize, 0.5f, j*scaleSize));
                 
                 glUniformMatrix4fv(uniModel, 1, GL_FALSE, glm::value_ptr(model));
                 glUniform3f(uniColor, 0.0f, 0.1f, 0.8f);
@@ -326,6 +320,24 @@ int main(int argc, char** argv) {
 	SDL_Quit();
     
     return 0;
+}
+
+void initField() {
+    for(int i = 0; i < BSIZE; i++) {
+        for(int j = 0; j < BSIZE; j++) {
+            vel[i][j] = 0.0f;
+            //pos[i][j] = (i == 0 && j == 0) ? 3.0f : (i == 0 || j == 0) ? 2.0f : 1.0f;
+            if(i == BSIZE-1 && j == BSIZE-1) { 
+                pos[i][j] = 2.0f;
+            }
+            else {
+                pos[i][j] = 1.0f;
+            }
+            printf("(%f %f) ", pos[i][j], vel[i][j]);
+        }
+        printf("\n");
+    }
+    printf("\n");
 }
 
 // Create a NULL-terminated string by reading the provided file
